@@ -13,8 +13,8 @@ jobs:
 
       - name: Load IMAGE variables
         run: |
-          echo "GHCR_IMAGE=ghcr.io/ibrahim/llm-research-assistant-stack/llm-app" >> $GITHUB_ENV
-          echo "IMAGE_SHA=${{ github.sha }}" >> $GITHUB_ENV
+          echo "GHCR_IMAGE=ghcr.io/${{ github.repository }}/llm-app" >> "$GITHUB_ENV"
+          echo "IMAGE_SHA=${{ github.sha }}" >> "$GITHUB_ENV"
 
       - name: Add SSH key
         uses: webfactory/ssh-agent@v0.9.0

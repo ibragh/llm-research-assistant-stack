@@ -33,6 +33,8 @@ The command builds the custom Python app image, provisions volumes, pulls contai
    ```bash
    git clone https://github.com/your-org/llm-research-assistant-stack.git
    cd llm-research-assistant-stack
+   cp .env.example .env
+   # Update GHCR_IMAGE in .env with your GitHub username/org if needed
    # Edit docker-compose.yml to set a real QWEN72B_Q4KM_URL if you have not already.
    ```
 2. **Launch the stack** (first run downloads the GGUF and builds the Ollama model):
