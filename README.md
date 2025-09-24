@@ -31,7 +31,7 @@ The command builds the custom Python app image, provisions volumes, pulls contai
 
 1. **Clone and configure**
    ```bash
-   git clone https://github.com/your-org/llm-research-assistant-stack.git
+   git clone https://github.com/ibragh/llm-research-assistant-stack.git
    cd llm-research-assistant-stack
    cp .env.example .env
    # Update GHCR_IMAGE in .env with your GitHub username/org if needed
