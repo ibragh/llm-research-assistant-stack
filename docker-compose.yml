@@ -1,0 +1,119 @@
+version: "3.9"
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_KEEP_ALIVE=30m
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # Default Hugging Face mirror for Qwen2-72B Q4_K_M (override for local caching)
+      - QWEN72B_Q4KM_URL=https://huggingface.co/Qwen/Qwen2-72B-Instruct-GGUF/resolve/main/qwen2-72b-instruct-q4_k_m.gguf
+    volumes:
+      - ollama_models:/root/.ollama
+      - ./models:/models
+    networks:
+      - llmnet
+    gpus: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: ["gpu"]
+              driver: nvidia
+              count: all
+    command: >
+      bash -lc "
+        set -e;
+        ollama serve & 
+        /models/init/prepare_72b.sh;
+        echo 'Ollama + Qwen2-72B (Q4_K_M) ready';
+        wait -n
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  chromadb:
+    image: ghcr.io/chroma-core/chroma:0.5.5
+    container_name: chromadb
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+      - ALLOW_RESET=1
+    volumes:
+      - chroma_data:/chroma/chroma
+    networks:
+      - llmnet
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: llm-app
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - JUPYTER_TOKEN=
+      - DEFAULT_LLM_MODEL=qwen2-72b-q4km
+    volumes:
+      - ./notebooks:/workspace/notebooks
+      - ./data:/workspace/data
+    networks:
+      - llmnet
+    depends_on:
+      ollama:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    command: >
+      bash -lc "
+        mkdir -p /workspace/notebooks /workspace/data;
+        jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --NotebookApp.allow_remote_access=True --NotebookApp.token=${JUPYTER_TOKEN}
+      "
+
+  lobe-chat:
+    image: lobehub/lobe-chat:latest
+    container_name: lobe-chat
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - OPENAI_API_KEY=ollama
+      - OPENAI_API_BASE_URL=http://ollama:11434/v1
+      - NEXT_AUTH_ENABLE=false
+      - NEXT_PUBLIC_DEFAULT_MODEL=qwen2-72b-q4km
+    networks:
+      - llmnet
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+networks:
+  llmnet:
+    driver: bridge
+
+volumes:
+  ollama_models:
+  chroma_data:

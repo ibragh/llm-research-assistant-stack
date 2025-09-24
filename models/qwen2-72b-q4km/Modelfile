@@ -1,0 +1,9 @@
+# Quantized Qwen2 72B for Ollama on 48GB VRAM
+# NOTE: the GGUF file will be downloaded to /models/weights/qwen2-72b-q4_k_m.gguf
+FROM /models/weights/qwen2-72b-q4_k_m.gguf
+
+PARAMETER num_ctx 8192         # keep modest; raise only if mem allows
+PARAMETER num_batch 4          # conservative for 48GB
+PARAMETER temperature 0.2
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.1
