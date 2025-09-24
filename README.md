@@ -31,10 +31,11 @@ The command builds the custom Python app image, provisions volumes, pulls contai
 
 1. **Clone and configure**
    ```bash
+
    git clone https://github.com/ibragh/llm-research-assistant-stack.git
    cd llm-research-assistant-stack
    cp .env.example .env
-   # Update GHCR_IMAGE in .env with your GitHub username/org if needed
+
    # Edit docker-compose.yml to set a real QWEN72B_Q4KM_URL if you have not already.
    ```
 2. **Launch the stack** (first run downloads the GGUF and builds the Ollama model):
@@ -206,6 +207,8 @@ Configure the following GitHub Secrets for the automated build and deployment wo
 - **VULTR_SSH_PRIVATE_KEY** → private key for that user (PEM contents).
 - **VULTR_APP_PATH** → absolute path on server (e.g., /home/ubuntu/llm-stack).
 - **GHCR_USER** and **GHCR_PAT** (only if the GHCR package is private). If public, these can be omitted.
+
+=======
 
 ## Shutdown and Cleanup
 

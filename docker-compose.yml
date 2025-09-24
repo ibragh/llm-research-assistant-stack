@@ -64,14 +64,21 @@ services:
       start_period: 30s
 
   app:
+
     image: ${GHCR_IMAGE}:${IMAGE_TAG}
     container_name: llm-app
-    restart: unless-stopped
     depends_on:
       chromadb:
         condition: service_healthy
       ollama:
         condition: service_healthy
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
       - CHROMA_HOST=chromadb
@@ -81,10 +88,20 @@ services:
     ports:
       - "8888:8888"
     volumes:
-      - app_workspace:/workspace
+      - ./notebooks:/workspace/notebooks
+      - ./data:/workspace/data
     networks:
       - llmnet
-
+    depends_on:
+      ollama:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    command: >
+      bash -lc "
+        mkdir -p /workspace/notebooks /workspace/data;
+        jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --NotebookApp.allow_remote_access=True --NotebookApp.token=${JUPYTER_TOKEN}
+      "
   lobe-chat:
     image: lobehub/lobe-chat:latest
     container_name: lobe-chat
@@ -110,3 +127,4 @@ volumes:
   ollama_models:
   chroma_data:
   app_workspace:
+
