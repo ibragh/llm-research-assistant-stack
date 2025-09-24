@@ -1,0 +1,90 @@
+name: CD - Deploy to Vultr
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load IMAGE variables
+        run: |
+          echo "GHCR_IMAGE=ghcr.io/ibrahim/llm-research-assistant-stack/llm-app" >> $GITHUB_ENV
+          echo "IMAGE_SHA=${{ github.sha }}" >> $GITHUB_ENV
+
+      - name: Add SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: |
+            ${{ secrets.VULTR_SSH_PRIVATE_KEY }}
+
+      - name: Known hosts
+        run: ssh-keyscan -H ${{ secrets.VULTR_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Sync repo to server (excluding .git)
+        run: |
+          rsync -az --delete --exclude ".git" ./ ${{ secrets.VULTR_USER }}@${{ secrets.VULTR_HOST }}:${{ secrets.VULTR_APP_PATH }}
+
+      - name: Remote deploy script
+        run: ssh ${{ secrets.VULTR_USER }}@${{ secrets.VULTR_HOST }} "bash -s" << 'EOS'
+          set -euo pipefail
+          cd "${VULTR_APP_PATH}"
+
+          # Ensure .env exists and set IMAGE_TAG to commit SHA
+          if [ ! -f .env ]; then cp .env.example .env; fi
+          sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${IMAGE_SHA}/" .env
+          sed -i "s|^GHCR_IMAGE=.*|GHCR_IMAGE=${GHCR_IMAGE}|" .env
+
+          # Docker login to GHCR (tokenless via PAT not needed if public; else use secrets)
+          echo "${GHCR_PAT:-}" | docker login ghcr.io -u "${GHCR_USER:-}" --password-stdin || true
+
+          # Pull and start updated stack
+          docker compose pull app || true
+
+          # Save previous tag for rollback
+          PREV_TAG_FILE=".deploy/prev_tag"
+          mkdir -p .deploy
+          if [ -f .env ]; then
+            grep -E "^IMAGE_TAG=" .env | cut -d= -f2 > "${PREV_TAG_FILE}.new"
+          fi
+
+          # Bring up
+          docker compose up -d
+
+          # Health checks (Ollama, Chroma, LobeChat, Jupyter)
+          echo "Waiting for services..."
+          for i in {1..60}; do
+            OK=0
+            curl -sf http://localhost:11434/api/tags >/dev/null && OK=$((OK+1))
+            curl -sf http://localhost:8000/api/v1/heartbeat >/dev/null && OK=$((OK+1))
+            curl -sf http://localhost:3000 >/dev/null && OK=$((OK+1))
+            curl -sf http://localhost:8888 >/dev/null && OK=$((OK+1))
+            if [ "$OK" -ge 3 ]; then break; fi
+            sleep 5
+          done
+
+          if [ "$OK" -lt 3 ]; then
+            echo "Health check failed, rolling back..."
+            if [ -f "${PREV_TAG_FILE}" ]; then
+              PREV_TAG="$(cat ${PREV_TAG_FILE})"
+              sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${PREV_TAG}/" .env
+              docker compose pull app || true
+              docker compose up -d
+            fi
+            exit 1
+          fi
+
+          # Persist the previous tag for the next rollback
+          mv "${PREV_TAG_FILE}.new" "${PREV_TAG_FILE}" || true
+          echo "Deploy OK"
+        EOS
+        env:
+          IMAGE_SHA: ${{ env.IMAGE_SHA }}
+          GHCR_IMAGE: ${{ env.GHCR_IMAGE }}
+          VULTR_APP_PATH: ${{ secrets.VULTR_APP_PATH }}
+          GHCR_USER: ${{ secrets.GHCR_USER }}
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
